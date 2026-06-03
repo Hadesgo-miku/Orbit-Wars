@@ -61,9 +61,22 @@ def load_already_fetched(manifest_path: Path) -> set[int]:
 
     如果 manifest 不存在，返回空集合（首次启动）。
     """
-    raise NotImplementedError(
-        "M14/T0.5 待实现：从 manifest.csv 读已抓 episode_id"
-    )
+    if not manifest_path.exists():
+        return set()
+
+    fetched: set[int] = set()
+    with manifest_path.open("r", encoding="utf-8", newline="") as fp:
+        reader = csv.DictReader(fp)
+        for row in reader:
+            raw_episode_id = row.get("episode_id")
+            if not raw_episode_id:
+                continue
+            try:
+                fetched.add(int(raw_episode_id))
+            except ValueError:
+                # 历史脏行不应阻断主流程，直接跳过继续读取后续记录。
+                continue
+    return fetched
 
 
 def append_manifest_row(
@@ -78,9 +91,34 @@ def append_manifest_row(
     bytes_size: int,
 ) -> None:
     """追加一行到 manifest.csv（不存在时先写 header）"""
-    raise NotImplementedError(
-        "M14/T0.5 待实现：append manifest row"
-    )
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = [
+        "episode_id",
+        "submission_id",
+        "team_name",
+        "players_count",
+        "is_winner",
+        "updated_score",
+        "create_time",
+        "bytes_size",
+    ]
+    should_write_header = (not manifest_path.exists()) or manifest_path.stat().st_size == 0
+    with manifest_path.open("a", encoding="utf-8", newline="") as fp:
+        writer = csv.DictWriter(fp, fieldnames=fieldnames)
+        if should_write_header:
+            writer.writeheader()
+        writer.writerow(
+            {
+                "episode_id": episode_id,
+                "submission_id": submission_id,
+                "team_name": team_name,
+                "players_count": players_count,
+                "is_winner": is_winner,
+                "updated_score": updated_score,
+                "create_time": create_time,
+                "bytes_size": bytes_size,
+            }
+        )
 
 
 def crawl_one_episode(
@@ -95,9 +133,16 @@ def crawl_one_episode(
         成功 → 写入文件的字节数
         失败 → None
     """
-    raise NotImplementedError(
-        f"M14/T0.5 待实现：抓 episode_id={episode_id}"
-    )
+    try:
+        replay = kaggle_api.get_episode_replay(episode_id=episode_id, auth=auth)
+    except Exception:
+        return None
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"{episode_id}.json"
+    payload = json.dumps(replay, ensure_ascii=False)
+    output_path.write_text(payload, encoding="utf-8")
+    return output_path.stat().st_size
 
 
 def run_crawl(config: CrawlConfig) -> CrawlResult:
@@ -116,8 +161,89 @@ def run_crawl(config: CrawlConfig) -> CrawlResult:
            e. 失败累计 3 次跳过
         5. 累计统计返回 CrawlResult
     """
-    raise NotImplementedError(
-        "M14/T0.5 待实现：主调度循环"
+    started_at = time.perf_counter()
+    auth = kaggle_api.KaggleAuth.from_default_path()
+    top_entries = kaggle_api.get_top_n_submissions(
+        n=config.top_n,
+        auth=auth,
+        competition_id=config.competition_id,
+    )
+
+    already_fetched = load_already_fetched(config.manifest_path)
+    failed_ids_path = config.manifest_path.parent / "failed_ids.txt"
+    quota_dir = config.output_dir.parent / "quota"
+
+    episodes_fetched = 0
+    episodes_failed = 0
+    bytes_downloaded = 0
+    quota_hit = False
+
+    for entry in tqdm(top_entries, desc="teams", unit="team"):
+        episodes = kaggle_api.list_episodes_for_submission(
+            submission_id=entry.submission_id,
+            auth=auth,
+            max_count=config.max_per_team,
+        )
+        for episode in tqdm(
+            episodes,
+            desc=f"episodes(team={entry.team_name})",
+            unit="ep",
+            leave=False,
+        ):
+            if episode.episode_id in already_fetched:
+                # 中断恢复关键逻辑：manifest 里已经存在的 episode 直接跳过。
+                continue
+
+            used_gb = kaggle_api.estimate_quota_used_today(quota_dir)
+            if used_gb >= config.quota_gb:
+                quota_hit = True
+                break
+
+            bytes_size: Optional[int] = None
+            # 单 episode 抓取失败最多重试 3 次，避免偶发网络波动拖垮全批次。
+            for attempt in range(3):
+                bytes_size = crawl_one_episode(
+                    episode_id=episode.episode_id,
+                    auth=auth,
+                    output_dir=config.output_dir,
+                )
+                if bytes_size is not None:
+                    break
+                time.sleep(kaggle_api.BACKOFF_BASE_S * (2 ** attempt))
+
+            if bytes_size is None:
+                episodes_failed += 1
+                failed_ids_path.parent.mkdir(parents=True, exist_ok=True)
+                with failed_ids_path.open("a", encoding="utf-8") as fp:
+                    fp.write(f"{episode.episode_id}\n")
+                continue
+
+            kaggle_api.record_quota(quota_dir=quota_dir, bytes_downloaded=bytes_size)
+            append_manifest_row(
+                manifest_path=config.manifest_path,
+                episode_id=episode.episode_id,
+                submission_id=episode.submission_id,
+                team_name=entry.team_name,
+                players_count=episode.players_count,
+                is_winner=episode.is_winner,
+                updated_score=episode.updated_score,
+                create_time=episode.create_time,
+                bytes_size=bytes_size,
+            )
+            already_fetched.add(episode.episode_id)
+            episodes_fetched += 1
+            bytes_downloaded += bytes_size
+
+        if quota_hit:
+            break
+
+    duration_s = time.perf_counter() - started_at
+    return CrawlResult(
+        episodes_fetched=episodes_fetched,
+        episodes_failed=episodes_failed,
+        bytes_downloaded=bytes_downloaded,
+        duration_s=duration_s,
+        quota_hit=quota_hit,
     )
 
 

@@ -380,65 +380,80 @@ Kaggle Episodes API ──→ raw replay JSON ──→ inverse_target ──→
 | **E 升级（条件）** | D18–D20 | 若收益 ≥ +30 LB 进入 patch；否则启动 MLP | `models/il_prior_mlp_v1.npz`（条件） | **D20 第 3 次提交** |
 | **F 最终决战** | D21–D22 | 数据 refresh + 模型 refresh + 最终两版 | Final submissions | **D22 final 两版** |
 
-### 4.2 Phase A 详细任务（D4–D8）
+### 4.2 任务重新整合（2026-06-03 v2.1 决策：合并细任务为大颗粒）
 
-| 天 | 任务 ID | 模块 | 负责 | 交付物 |
-|---|------|------|------|------|
-| D4 | T0.4 | M14 | Replay Analyst | `tuning/replay_scraper/kaggle_api.py` + 100 ep 健全性 |
-| D5 | T0.5 | M14 | Replay Analyst | `tuning/replay_scraper/crawler.py` 跑全量 top-20 启动 |
-| D6 | T0.6 | M14 | Replay Analyst | `tuning/replay_scraper/inverse_target.py` |
-| D7 | T0.7 | M14 | Replay Analyst | `tuning/replay_scraper/extract_features.py` → parquet |
-| D7 | T0.8 | M16 | Eval Lead | `eval/data_quality.py` + `eval/results/data_quality_v1.md` |
-| D8 | T0.9 | M14 | Orchestrator | 确认数据集 v1 可用（≥1500 ep, 2P/4P 比例 ≥ 30/70） |
+> **背景**：T0.4 完成后发现细颗粒度（T0.5-T0.9）拖慢节奏。决定把数据 ETL、模型训练、在线接入各合并为单个 subagent 一次性完成的"大颗粒"。
 
-### 4.3 Phase B 详细任务（D9–D12）
+| 大任务 ID | 合并自 | 模块 | 角色 | 出口 |
+|------|------|------|------|------|
+| **T-CRAWL**（后台挂机，不占 subagent） | T0.5 | M14 | 自动化 | 累计 ≥1500 episodes 落 `data/replays/raw/` |
+| **T-DATA**（一次性大任务） | T0.6 + T0.7 + T0.8 | M14 + M16 | Replay Analyst | `data/replays/processed/v1.parquet` + `eval/results/data_quality_v1.md` |
+| **T-MODEL**（一次性大任务） | T1.1 + T1.2 + T1.3 + T1.4 + T1.5 | M15 | IL Trainer | `models/il_prior_lgbm_v1*.{txt,json,_compiled.py}` |
+| **T-WIRE**（一次性大任务） | T2.1 + T2.2 + T2.3 | M13 + M9 | Code Lead | `src/policy/il_prior.py` 完整 + `plan.py` 改造 + 性能验证 |
+| **T-EVAL**（评测确认） | T2.5 + T2.6 | M12 | Eval Lead | `eval/results/v3.md` 大样本 A/B 报告 |
+| **T-SUBMIT**（首次提交） | T2.4 | — | Orchestrator | 第 1 次 Kaggle 提交（校准用） |
 
-| 天 | 任务 ID | 模块 | 交付物 |
-|---|------|------|------|
-| D9 | T1.1 | M15 | `train_il_prior.py`：target 模型 |
-| D9 | T1.2 | M15 | `train_il_prior.py`：ships_frac + act 模型 |
-| D10 | T1.3 | M15 | 模型序列化（嵌入式 / submission.py 友好） |
-| D11 | T1.4 | M15 | 验证：top-1 / top-3 accuracy 报告 |
-| D12 | T1.5 | M15 | `models/il_prior_lgbm_v1.*` 落地 + 元数据 |
+### 4.3 大颗粒任务时间表
 
-### 4.4 Phase C 详细任务（D13–D15）
+| 天 | 任务 | 状态 / 启动条件 |
+|---|------|------|
+| D4 | T0.4（Kaggle API + crawler 链路打通） | ✅ 已完成（136 episodes 落地） |
+| D4–D7 | **T-CRAWL**（后台挂机继续爬到 ≥1500） | 用户启动后挂机，不阻塞下游 |
+| D5 | **T-DATA**（数据 ETL 全链路） | 现有 136 episodes 已可启动；先出 `v1_pilot.parquet` 打通链路，T-CRAWL 满后 rerun 出 `v1.parquet` |
+| D7–D9 | **T-MODEL**（IL Prior 训练） | 依赖：v1.parquet 通过 M16 质量门禁 |
+| D10–D11 | **T-WIRE**（M13 推理 + plan.py 改造） | 依赖：il_prior_lgbm_v1 落地 |
+| D12 | **T-EVAL**（A/B vs v1_baseline） | 依赖：T-WIRE 完成 |
+| D13 | **T-SUBMIT**（第 1 次 Kaggle 提交） | 依赖：T-EVAL 显著提升 |
+| D14–D17 | 数据 / 模型 refresh + 二次提交 | 同上节奏循环 |
+| D18–D20 | （条件）升级到 MLP；GBC tie-break 接入 | 取决于 T-EVAL 收益 |
+| D21–D22 | 最终两版提交 + 复盘 | — |
 
-| 天 | 任务 ID | 模块 | 交付物 |
-|---|------|------|------|
-| D13 | T2.1 | M13 | `src/policy/il_prior.py` 实现 `predict_prior` + 加载 fallback |
-| D13 | T2.2 | M9 | `src/policy/plan.py` 改造接入 L4.5 节点 |
-| D14 | T2.3 | M9 | 性能测试：推理 P95 ≤ 800ms |
-| D14 | T2.4 | — | **第 1 次提交** Kaggle（校准用） |
-| D15 | T2.5 | M12 | 大样本 A/B vs v1：n=384 4P + n=256 2P |
-| D15 | T2.6 | M12 | `eval/opponents/v1_baseline.py`（L5 自我对照） |
+### 4.4 大颗粒任务交付门槛
 
-### 4.5 Phase D 详细任务（D16–D17）
+每个大颗粒任务必须在交付时满足：
 
-| 天 | 任务 ID | 模块 | 交付物 |
-|---|------|------|------|
-| D16 | T3.1 | M10 | CMA-ES 调 `IL_ALPHA` 等参数（仅 L1-L3 对手集） |
-| D16 | T3.2 | — | 24h 后回收 D14 提交 ELO，与本地预测对比 |
-| D17 | T3.3 | M12 | `eval/results/v3.md` + 决策：进 Phase E 还是停 |
-| D17 | T3.4 | — | **第 2 次提交（v3）** |
+**T-DATA 完成 = 同时满足**：
+- `data/replays/processed/v1_pilot.parquet` 生成（≥5000 行）
+- inverse target 解析率 ≥ 85%
+- `eval/results/data_quality_v1_pilot.md` 落地且必查全通过
+- 单元测试覆盖：`resolve_target` 在 4 个 hand-crafted case 上正确
+- 集成测试：能从 raw replay 一键走到 parquet（CLI 可调）
 
-### 4.6 Phase E 详细任务（条件触发，D18–D20）
+**T-MODEL 完成 = 同时满足**：
+- 3 个 LightGBM Booster 落地（target / ships / act）
+- `models/il_prior_lgbm_v1.json` 元数据完整（含 metrics）
+- `il_prior_lgbm_v1_compiled.py` 纯 Python 版可被 `il_prior._load_prior` 加载
+- target top-1 acc ≥ 40%（pilot 阶段放宽阈值，full data 后追到 45%）
+- target top-3 acc ≥ 70%
+- act_model AUC ≥ 0.75
 
-| 天 | 任务 ID | 模块 | 交付物 |
-|---|------|------|------|
-| D18 | T4.1 | M15+ | （条件）小型 MLP 设计 + 训练 |
-| D18 | T4.2 | M7 | （可选）GBC value tie-break 接入 L4.6 |
-| D19 | T4.3 | M14 | 数据 refresh（data_v2，补抓 D8 之后的最新 episode） |
-| D19 | T4.4 | M15 | 用 data_v1 + data_v2 重训 `il_prior_lgbm_v2` |
-| D20 | T4.5 | — | **第 3 次提交** + 备用版本 |
+**T-WIRE 完成 = 同时满足**：
+- `il_prior.predict_one` / `predict_batch` 实现
+- `il_prior.apply_prior_to_missions` 实现
+- `src/policy/plan.py` 接入 L4.5 节点（IL_ALPHA 可配置）
+- 模型未加载时 fallback 行为与 v1 完全一致（回归测试）
+- 性能：plan_moves 单次 P95 ≤ 850ms（含 IL prior 推理）
+- 单元测试：模型加载 / clip / logit / apply_prior_to_missions 四类
 
-### 4.7 Phase F 详细任务（D21–D22）
+### 4.5 后续 phase 摘要（按现实节奏调整）
 
-| 天 | 任务 ID | 模块 | 交付物 |
-|---|------|------|------|
-| D21 | T5.1 | M14/M15 | 最后一次数据 + 模型 refresh（data_v3 + lgbm_v3） |
-| D21 | T5.2 | M12 | A/B：lgbm_v3 vs lgbm_v2 vs lgbm_v1 vs v1_baseline |
-| D22 | T5.3 | — | **最终两版**（稳健 + 激进）提交 |
-| D22 | T5.4 | — | 复盘 + 文档归档 |
+**Phase D（D14–D17 校准）**：
+- 第 1 次提交 24h 后回收 ELO，与本地 A/B 对比，校准"3-5 LB/pp"换算系数
+- CMA-ES 调 `IL_ALPHA` + scoring 参数（仅 L1-L3 对手集）
+- 第 2 次提交（v3 IL_ALPHA 调优版）
+
+**Phase E（D18–D20 条件升级）**：
+- 数据 refresh：补抓 D8 之后的新 episode → `data_v2`
+- 用 data_v1+v2 重训 `il_prior_lgbm_v2`
+- 若 T-EVAL 收益 < +30 LB → 启动 MLP 升级；否则继续 patch
+- 可选：GBC value tie-break 接入 L4.6 节点
+- 第 3 次提交 + 备用版本
+
+**Phase F（D21–D22 决战）**：
+- 最后一次数据 refresh → `data_v3` → 训 `il_prior_lgbm_v3`
+- A/B：lgbm_v3 vs lgbm_v2 vs lgbm_v1 vs v1_baseline
+- 最终两版（稳健 + 激进）6/22 提交进 final eval
+- 复盘 + 文档归档
 
 ---
 
