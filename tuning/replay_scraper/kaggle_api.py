@@ -23,6 +23,7 @@ import datetime as dt
 import time
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,6 +33,8 @@ import requests
 
 KAGGLE_API_BASE: str = "https://www.kaggle.com/api/i"
 DEFAULT_TIMEOUT_S: float = 30.0
+# 单局 replay 体积大，kaggle-sdk 默认无硬超时；超时后由上层记 failed 并继续。
+REPLAY_DOWNLOAD_TIMEOUT_S: float = 120.0
 MAX_RETRIES: int = 3
 BACKOFF_BASE_S: float = 1.5
 
@@ -421,6 +424,8 @@ def list_episodes_for_submission(
 def get_episode_replay(
     episode_id: int,
     auth: KaggleAuth,
+    *,
+    timeout_s: float = REPLAY_DOWNLOAD_TIMEOUT_S,
 ) -> dict[str, Any]:
     """
     拉取指定 episode 的完整 replay JSON。
@@ -428,27 +433,39 @@ def get_episode_replay(
     参数：
         episode_id: 目标 episode ID
         auth: 鉴权信息
+        timeout_s: 单局下载最长等待秒数（避免配额触顶后 API 挂死导致 tqdm 假停）
 
     返回：
         replay 完整 JSON（含 configuration / steps / rewards / statuses）
 
     实现要点：
         - 调用 competitions.EpisodeService/GetEpisodeReplay
-        - replay 体积 5-20 MB，超时阈值要拉宽到 60s
+        - replay 体积 5-20 MB，用线程 + timeout 包住 sdk 调用
         - 建议立即写到磁盘（不要持有大对象在内存）
     """
     from kagglesdk.competitions.types import competition_api_service as cas
 
-    with _open_competition_client(auth) as client:
-        request = cas.ApiGetEpisodeReplayRequest()
-        request.episode_id = episode_id
-        response = client.get_episode_replay(request)
-        response.raise_for_status()
-        replay = response.json()
+    def _download() -> dict[str, Any]:
+        with _open_competition_client(auth) as client:
+            request = cas.ApiGetEpisodeReplayRequest()
+            request.episode_id = episode_id
+            response = client.get_episode_replay(request)
+            response.raise_for_status()
+            replay = response.json()
+        if "configuration" not in replay or "steps" not in replay:
+            raise RuntimeError(
+                f"Replay schema missing required fields for episode_id={episode_id}"
+            )
+        return replay
 
-    if "configuration" not in replay or "steps" not in replay:
-        raise RuntimeError(f"Replay schema missing required fields for episode_id={episode_id}")
-    return replay
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(_download)
+        try:
+            return future.result(timeout=timeout_s)
+        except FuturesTimeoutError as exc:
+            raise TimeoutError(
+                f"get_episode_replay timed out after {timeout_s}s (episode_id={episode_id})"
+            ) from exc
 
 
 def estimate_quota_used_today(quota_dir: Path) -> float:

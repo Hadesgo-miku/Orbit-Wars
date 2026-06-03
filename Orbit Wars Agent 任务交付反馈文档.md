@@ -499,6 +499,52 @@ python -m eval.data_quality \
 
 ---
 
+## [交付记录] v2.1 | T-DATA | M14+M16
+
+### 1) 任务元信息
+- 版本：v2.1
+- 任务：T-DATA
+- 模块：M14（inverse_target / extract_features）+ M16（data_quality）
+- 角色：Replay Analyst
+- 日期：2026-06-03
+
+### 2) 本次改动文件（路径 + 行数变化）
+- `tuning/replay_scraper/inverse_target.py`：占位 → 完整实现（含 `--sanity-check` CLI）
+- `tuning/replay_scraper/extract_features.py`：占位 → 完整实现（47 维 FEATURE_NAMES + pyarrow 分批写）
+- `eval/data_quality.py`：占位 → 完整实现（Q1–Q7 + W1–W3 + `--pilot`）
+- `tests/test_inverse_target.py`：新文件（5 cases）
+- `tests/test_extract_features.py`：新文件（4 cases）
+- `tests/test_data_quality.py`：新文件（9 cases）
+
+### 3) 单元测试结果（命令 + 结果）
+- 命令：`python -m pytest tests/test_inverse_target.py tests/test_extract_features.py tests/test_data_quality.py -v`
+- 结果：`18 passed`
+
+### 4) 性能验收结果
+- inverse_target 抽样 50 局：47446 actions，解析率 96.35%（≥85%）
+- extract_features 1023 局：约 6 分钟，881405 行
+
+### 5) 集成验收结果（外置盘数据路径）
+- 数据根目录：`/Volumes/for mac/Data/Orbit Wars/replays`（manifest/raw 1023 局对齐）
+- Step 1：`python -m tuning.replay_scraper.inverse_target --sanity-check 50 --raw-dir .../raw` → exit 0，hit_rate=0.9635
+- Step 2：`python -m tuning.replay_scraper.extract_features ... --output .../processed/v1_pilot.parquet` → exit 0，881405 行
+- Step 3：`python -m eval.data_quality --parquet .../v1_pilot.parquet --pilot` → exit 0，`passed_overall=true`
+
+### 6) 核心实现说明
+- `inverse_target` 严格对齐 IL notebook Cell 7（fleet_speed_simple + 250 tick 碰撞模拟）
+- `extract_features` 输出 47 维固定列名 + 10 维元字段；idle 95% drop；每 200 局 flush parquet
+- `data_quality` pilot 模式 Q2 门槛降至 800 episodes；Q7 校验 idle drop 后 act 为主且保留 ≥0.5% idle
+
+### 7) v1_pilot 数据摘要
+- 总行数：881405；episode 数：1023；2P 行：691216；4P 行：190189
+- 出舰样本解析率：100%（extract 已过滤 target=-1）
+- 必查项：全过；警告：W3 winner 偏倚 63.5%（非 fatal）
+
+### 8) 最后一段反馈（一句话总结）
+- T-DATA 全链路已在外置盘 ~1023 局 replay 上跑通，产物 `v1_pilot.parquet` 与质量报告可用于后续 T-MODEL pilot 训练；全量 v1 需 T-CRAWL 达 ≥1500 episodes 后复跑 extract（去掉 `--pilot`）。
+
+---
+
 ## T-MODEL 启动模板（v2.2 / M15 / IL Trainer）
 
 > 在 T-DATA 完成且 T-CRAWL 累计 ≥1500 episodes 后启动。届时会用 v1.parquet（不是 v1_pilot）训练。
