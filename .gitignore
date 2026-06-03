@@ -10,13 +10,32 @@ __pycache__/
 venv/
 env/
 
-# 数据：replay / parquet / episode 都很大，不进 git
-data/replays/*
+# === 数据 ===
+# replay JSON 与 parquet 都很大，不进 git
+data/replays/raw/*
+data/replays/processed/*
+data/replays/*.csv
 data/parquet/*
 data/episodes/*
+
+# 但保留目录结构（.gitkeep）
 !data/replays/.gitkeep
+!data/replays/raw/.gitkeep
+!data/replays/processed/.gitkeep
 !data/parquet/.gitkeep
 !data/episodes/.gitkeep
+
+# === 模型 ===
+# LightGBM 训出来的二进制文件 / numpy 权重不进 git
+models/*.txt
+models/*.npz
+models/*.bin
+models/*.pkl
+
+# 但保留元数据 .json / 编译后的纯 Python 树（提交时要随 submission.py 走，可考虑保留）
+!models/.gitkeep
+!models/*.json
+!models/*_compiled.py
 
 # 提交打包产物
 submissions/packages/*.tar.gz
@@ -27,7 +46,7 @@ submissions/packages/*.py
 eval/results/*.tmp
 eval/results/_raw/
 
-# Kaggle 凭证
+# Kaggle 凭证（不要提交！）
 .kaggle/
 kaggle.json
 access_token

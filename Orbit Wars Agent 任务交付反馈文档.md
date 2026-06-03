@@ -123,3 +123,111 @@
 
 ### 7) 最后一段反馈（一句话总结）
 - 本次改动核心是把公开 heuristic baseline 的最小调度思想落地为 `plan_moves` 可执行实现，并补齐了可回归的功能与性能测试闭环。
+
+---
+
+# 待开工任务：Subagent 启动模板
+
+> 本节是 Orchestrator 给 Subagent 的"工作合同"。复制下面整段作为 subagent 的开局 prompt。
+> 完成后 subagent 必须按文档开头的"固定交付模板"在本文件追加 `## [交付记录] v{版本} | {任务ID} | {模块ID}`。
+
+---
+
+## T0.4 启动模板（v2 / M14 / Replay Analyst）
+
+```markdown
+# 任务上下文
+项目路径：/Users/zhaohongbo/CursorProjects/Kaggle竞赛/Orbit Wars
+当前分支：v2-il-prior
+主路线文档：master-plan.md（必读 §0 §1.2 §2.1 §4.2 §6）
+当前迭代版本：v2.0（IL-as-Prior 主线起点）
+本任务对应模块：M14（Replay 数据 ETL）
+
+# 你的角色：Replay Analyst（subagent #1）
+
+# 你的任务（T0.4）
+实现 Kaggle Episodes API 抓取的最小链路：
+- 鉴权（从 ~/.kaggle/kaggle.json）
+- 取竞赛 top-N submissions 排行榜
+- 列出 submission 最近 N 局 episode 元信息
+- 拉取单个 episode 完整 replay JSON
+- 健全性测试：成功抓 ≥ 100 个 episode 并落到 data/replays/raw/
+
+你只能修改（**白名单**）：
+- tuning/replay_scraper/kaggle_api.py
+- tuning/replay_scraper/crawler.py
+- tests/test_replay_scraper_api.py（新文件）
+- tests/perf_replay_scraper.py（新文件）
+
+你不能修改：
+- 所有 src/** 文件
+- 所有 eval/** 文件（除非任务明确允许）
+- 任何 tuning/replay_scraper/ 之外的 tuning/ 文件
+- master-plan.md / .gitignore / requirements.txt（动这些找 Orchestrator）
+- inverse_target.py / extract_features.py（属于 T0.5/T0.6/T0.7）
+
+# 必读
+- master-plan.md §0.4（v2 范式切换决策依据）
+- master-plan.md §2.1 关于 M14 的接口
+- master-plan.md §6.3（Kaggle API 配额管理）
+- tuning/replay_scraper/README.md（数据 schema 与已知坑）
+- tuning/replay_scraper/kaggle_api.py 中的 docstring（接口签名 + 实现指引）
+- tuning/replay_scraper/crawler.py 中的 docstring
+
+# 接口约定（不可改）
+- kaggle_api.KaggleAuth.from_default_path() -> KaggleAuth
+- kaggle_api.get_top_n_submissions(n, auth, competition_id) -> list[LeaderboardEntry]
+- kaggle_api.list_episodes_for_submission(submission_id, auth, max_count) -> list[EpisodeRecord]
+- kaggle_api.get_episode_replay(episode_id, auth) -> dict
+- kaggle_api.estimate_quota_used_today(quota_dir) / record_quota(quota_dir, bytes)
+- crawler.run_crawl(config: CrawlConfig) -> CrawlResult
+- crawler.cli() 可用 `python -m tuning.replay_scraper.crawler ...` 直接调
+
+# 验收标准
+- 单元测试：tests/test_replay_scraper_api.py 全部通过
+  - 至少覆盖：鉴权加载 / 重试 backoff / quota 记账 / 中断点续抓
+  - 用 monkeypatch / requests-mock 模拟 Kaggle API 响应（避免真实网络）
+- 性能：单次 get_episode_replay 在网络正常情况下 P95 ≤ 5s（在 tests/perf_replay_scraper.py 中标注 marker 跳过 CI）
+- 集成：手动验证至少抓 100 个真实 episode 成功，落到 data/replays/raw/
+- 报告：在本文件追加交付记录（用文档开头的模板）
+
+# 真正的"端到端验证"步骤（你必须实际运行）
+1. 确认 ~/.kaggle/kaggle.json 存在（不存在则报告给 Orchestrator）
+2. 调用 get_top_n_submissions(20)，把结果用 print 输出验证：team_name 应该都是 Orbit Wars 现役 top-20
+3. 取 top-1 submission，调 list_episodes_for_submission(top1.submission_id, max_count=10)
+4. 取其中 1 个 episode，调 get_episode_replay 拿到 JSON，校验：
+   - "configuration" 字段存在
+   - "steps" 字段是 list 且 len ≥ 50
+   - "rewards" / "statuses" 字段存在
+5. 跑 crawler.run_crawl(CrawlConfig(top_n=20, max_per_team=5))，期望抓 ≥ 100 个 episode
+
+# 已知陷阱（不要再踩）
+- Kaggle Episodes API 是 grpc-web 风格 JSON RPC，需要 `X-XSRF-TOKEN` header
+- 单 episode JSON 体积 5-20MB，timeout 必须 ≥ 60s
+- HTTP 429 必须指数退避（base 1.5s，最多 3 次重试）
+- 每天 5GB 配额是硬墙，必须本地记账（quota_YYYY-MM-DD.json）
+- 不要把 kaggle.json 的真实内容打到任何 log / commit
+
+# 禁止
+- 不要新增依赖（只能用 requirements.txt 已列：requests / tqdm / pandas 等）
+- 不要新增大段 docstring 之外的 markdown 文件
+- 不要"为完成度"实现 inverse_target / extract_features（这是 T0.6/T0.7 的事）
+- 不要在 crawler 里写 inverse target 逻辑
+
+# 完成后请输出
+- 改动文件列表（路径 + 行数变化）
+- 单元测试运行结果（python -m pytest tests/test_replay_scraper_api.py -v）
+- 真实端到端运行的输出（top-1 队名 / 抓到的 episode 数量 / 累计字节数）
+- 一句话总结：本次改动核心是什么
+```
+
+---
+
+## T0.5–T0.9 启动模板（占位，待 T0.4 完成后填充）
+
+- **T0.5**（D5 / M14 / Replay Analyst）：跑全量 top-20 抓取，达到 ≥ 1500 episodes
+- **T0.6**（D6 / M14 / Replay Analyst）：实现 `inverse_target.resolve_target` 并跑 50 个 episode 的解析率验证
+- **T0.7**（D7 / M14 / Replay Analyst）：实现 `extract_features.run_extract`，输出 `data/replays/processed/v1.parquet`
+- **T0.8**（D7 / M16 / Eval Lead）：实现 `eval/data_quality.run_quality_check`，输出 `eval/results/data_quality_v1.md`
+- **T0.9**（D8 / Orchestrator）：审查数据集 v1，决定是否进入 Phase B
+

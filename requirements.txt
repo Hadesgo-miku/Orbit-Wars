@@ -1,6 +1,7 @@
 # Orbit Wars 项目依赖
 # 注意：kaggle-environments 必须 >= 1.29.1（sweep 修复后版本）
 
+# === 核心运行时（v0/v1 已用） ===
 kaggle-environments>=1.29.1
 numpy>=1.24
 scikit-learn>=1.3
@@ -9,3 +10,8 @@ pyarrow>=12.0
 pandas>=2.0
 pytest>=7.0
 kaggle>=1.5
+
+# === v2 IL-as-Prior 主线新增依赖 ===
+lightgbm>=4.0      # M15 IL prior 主模型（target / ships / act 三模型）
+requests>=2.31     # M14 Kaggle Episodes API 自爬
+tqdm>=4.66         # M14 抓取/抽取的进度条
