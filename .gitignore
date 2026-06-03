@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# 数据：replay / parquet / episode 都很大，不进 git
+data/replays/*
+data/parquet/*
+data/episodes/*
+!data/replays/.gitkeep
+!data/parquet/.gitkeep
+!data/episodes/.gitkeep
+
+# 提交打包产物
+submissions/packages/*.tar.gz
+submissions/packages/*.py
+!submissions/packages/.gitkeep
+
+# 评测结果中间产物
+eval/results/*.tmp
+eval/results/_raw/
+
+# Kaggle 凭证
+.kaggle/
+kaggle.json
+access_token
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
+
+# 日志
+*.log
+logs/

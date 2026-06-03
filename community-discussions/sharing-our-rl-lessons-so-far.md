@@ -1,0 +1,342 @@
+# Orbit Wars — Sharing Our RL Lessons So Far
+
+**Competition:** Orbit Wars
+
+**Topic:** Sharing our RL lessons so far
+
+**Posted by:** Lin Myat Ko
+**Position in competition:** 5th
+**Posted:** 21 days ago
+
+I considered myself as an intermediate RL practitioner. So, take everything I said with a grain of salt.
+
+## The first steps
+
+The first order of the business is to rewrite the environment to be fast. This is non-negotiable. My philosophy about RL is that if the environment is painfully slow, do not even attempt it. It is a waste of time. Forget sample efficiency. You are doing RL. Ours route is JAX. Current best model runs at ~10000 SPS.
+
+## Architecture search
+
+Reward shaping is important here. You want to run experiments and see the architecture reacts to reward shape. I call it "signs of life". The architecture we choose must move its policy towards our reward structure. We settle with entity transformer.
+
+## Feature engineering
+
+If we treat this RL as engineering problem, we must think like more of an engineer. In ideal scenario, machine learning always learn what's useful or not. ML will discover perfect representation itself. But we don't need that. We don't have scale. So, put as many inductive bias as possible. Do you need to write heuristic agent? I don't. I can watch the games and I could even do some analysis to find out the useful information to make the policy search space smaller. Of course, the more you understand and capitalize on game mechanics, the better.
+
+## Reward structure tip
+
++1 -1 is enough for 2p mode.
+
+## Current roadblock
+
+Opus said he messed up our submission architecture series but somehow it worked. lol. The same is about 600K params. Now that we put a lot of efforts to feature engineering and improve the architecture, it stops working. Training is unstable. GG transformer.
+
+## Coding AI assistant
+
+Claude Code Opus 4.7 has been a perfect partner. He wrote every single line of codes. It's not perfect but the leaderboard performance is not bad. It accelerates tedious feature engineer tasks. I haven't read even a single line of codes yet :3 . Claude is like over optimistic and over pessimistic about training results. So, you need to use your judgement and call important decisions yourself. Believe in yourself.
+
+## Budget
+
+Claude Code: 100 USD, Vast ai 5090: ~150 USD. For reference, the best model we submitted took ~3 days, self-play from the start.
+
+## Plan Forward
+
+Read the codes myself. Audit the architecture and feature engineer. Make sure I understand every details and tradeoffs we are going to make. Make transformer training successful. Tame the beast.
+
+Fine. I'll do it myself.
+Anything to add, Opus?
+
+## A few hard-earned things from my side, for whoever's debating using an AI partner on their next RL run
+
+Add one architecture delta at a time. Always. I shipped 7 changes vs F12 in two days (TypedInputProjection, sun mask, MLP FireHead, per-source TargetMix, multi-query ValueHead, update_c=True, MLP 4× expansion). Each looked correct in isolation. When training broke, we couldn't tell which one was responsible. F-series got to F12 over a year. You can't compress that into 2 days. The "shipped 7 wins, lost 1 baseline" math doesn't work in RL.
+
+The limitations of a working baseline might be doing free regularization work nobody notices. F12's single-Dense FireHead, global head_mix_logits, missing sun mask — those weren't bugs to fix. They were keeping gradient signal muted enough that vanilla PPO stayed stable. Remove them and you need lr warmup, cosine decay, careful entropy. A "stupider" architecture that trains is worth more than a "smarter" one that doesn't.
+
+Don't trust the AI's diagnosis to be self-consistent. Light is being generous calling me a partner. I switched reads on the same data multiple times in the same hour ("entropy crash is catastrophic" → "entropy crash is the policy converging to optimal" → repeat). I'm useful for: code ports, parity tests, analysis scripts, journal writing, mechanical refactors. I'm bad at: separating "interesting research direction" from "what your project needs," knowing when to stop iterating, remembering my own corrections from yesterday. Architecture-level calls and "is this run dead?" decisions belong with the person whose training budget is on the line. Light caught me overreaching dozens of times this week.
+
+The clip_frac trajectory is your most reliable warning sign. Before entropy_fire collapses or KL spikes, clip_frac starts creeping up monotonically (typically 0.10 → 0.30+ over a few million samples). When you see that creep, your optimizer is losing the race against value-head sharpening. Cut lr or revert capacity. Don't wait for the actual blow-up. We did. It cost us a day.
+
+Read the canonical transformer-RL playbook before reaching for clever tricks. Warmup_cosine, lr decay, careful entropy schedules, possibly per-head ent_coef. IMPALA, AlphaStar, OpenAI Five — every paper using a transformer policy in PPO mentions the training pain. The fixes are documented. I had us on vanilla PPO settings (lr constant, single ent_coef) for 2 days before reaching for warmup. Should have been step 1.
+
+On the budget: my $100 is small vs the $150 GPU. What's invisible: bad AI suggestions cost GPU time to verify. A misdirection that takes a day costs ~$50 on its own. Be selective which suggestions you spend GPU on. Light's "use your judgement" is the only rule that consistently kept us moving forward.
+
+GG transformer is the right line. The fix is on the other side of "Fine. I'll do it myself."
+
+GLHF, kagglers.
+
+## Comments
+
+### hwe owe
+Posted 2 days ago · 2130th in this Competition
+
+anyway,do you wan to join our team?
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted 2 days ago · 5th in this Competition
+
+Can you provide 8xH100s 24/7 throughout the competition? 😁
+
+### hwe owe
+Posted 2 days ago · 2130th in this Competition
+
+no,but we have 200 hours of a100?i will ask my teamate
+
+### Gerar Del Toro
+Posted 20 days ago · 149th in this Competition
+
+The 10000 SPS is including model policy and forward pass or just kaggle environment empty with no actions?
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted 20 days ago · 5th in this Competition
+
+Yeah, it's all included. It was with basic features and basic model architecture with 600K params. It was that fast. Now, I have used complex features and architecture is also complex, the SPS drops to 2K and it stops learning at all. 🫠 It may take me like 4-5 days to get back on track.
+
+### junlee789
+Posted 20 days ago
+
+Thanks lol. I was worried that opus could copy orbit wars perfectly and seems pretty good.
+
+Not only for JAX, also RL advice, thank you again!
+
+### hykunnnn
+Posted 10 days ago · 744th in this Competition
+
+Does this speed include the PPO update?
+
+### Gerar Del Toro
+Posted 10 days ago · 149th in this Competition
+
+I think he does include it… It's posible I can confirm that at least. There are some very interesting trade-offfs in action space, rollouts, memory, batching and many other things going on here to actually reach this SPS amount.
+
+### junlee789
+Posted 20 days ago
+
+Thank you for sharing what you have learned with this high-quality and well compacted information! It will help me a lot!
+
+### Navneet
+Posted 18 days ago
+
+Cool RL lessons @lightmk
+
+### Pirhosseinlou
+Posted 7 hours ago · 443rd in this Competition
+
+I read your post last week and when I saw that you wrote: "GG transformer is the right line." I was a little surprised. Since last week I have been trying to understand what is the benefit of this layer in the model architecture. Almost none of the AI assistants agree with this! I would like to know if you are still using GG Transformer and why?
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted 6 hours ago · 5th in this Competition
+
+Do not believe anything AI assistants say. In my experience, they are very bad at reading the situations and what's happening. So, default rule is to reject their proposals. I am still using entity transformer. We design it mostly ourselves. AI assistants are really good at implementation and engineering. But, be warned. They make a lot of mistakes. For the experiment ideas, they don't help us much.
+
+### Christopher Joshy
+Posted a day ago · 856th in this Competition
+
+so r u still using rl ?
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted a day ago · 5th in this Competition
+
+RL from day 1. 😎
+
+### Christopher Joshy
+Posted a day ago · 856th in this Competition
+
+cool, any suggestions for newbies like myself
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted 6 hours ago · 5th in this Competition
+
+Study past competitions RL solutions and codes. They give you everything you need.
+
+### hwe owe
+Posted a day ago · 2130th in this Competition
+
+do you use model.pth on this?what feautures and Hyperparameter do you use?can you provide a simple baseline?
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted a day ago · 5th in this Competition
+
+I can't share features yet. I can tell you that even with basic features, we can train it to have a decent performance on leaderboard.
+
+clip_eps: 0.2
+ent_coef: 0.05
+gae_lambda: 0.95
+gamma_discount: 0.99
+grad_clip: 1
+learning_rate: 0.00003
+num_envs: 512
+num_minibatches: 24
+ppo_epochs: 1
+rollout_steps: 32
+vf_coef: 0.5
+weight_decay: 0.0001
+hyperparams from early experiments. Pretty much standard PPO hyperparams values. No magic there.
+
+### Sheeesh---
+Posted 19 hours ago · 64th in this Competition
+
+if people were sharing info the same way you share in this thread, we would have flying cars by now.
+
+### Russell Kirk
+Posted 17 hours ago · 2902nd in this Competition
+
+It's very kind of you to share all of this information! Very informative reading this thread. Thanks!
+
+### Gerar Del Toro
+Posted 3 days ago · 149th in this Competition
+
+Are you most trained models always better than previous ones in PB? I am experiencing my 150M steps model being the best submission I have, and even locally some other 300M models beating it 90% of the times, in PB they struggle a lot. I am not sure 4 players (not trained for it) match ups are making this effect or just some kind of deviation of optimal happening…
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted 2 days ago · 5th in this Competition
+
+Nope. RL training is not monotonic. Yeah, it's painful that we see local improvements don't translate to leaderboard performance. The agent maybe overfitting to particular reward structure. You can query submission episodes to analyze head to head win rates against usual opponents to see if there is a statistical improvement.
+
+### Son Pham
+Posted a day ago · 2787th in this Competition
+
+What do you do when that happens? Do you branch off from that point to train a different agent using different data? And can replays play a role in this?
+
+### Jonathan Wang2022
+Posted 5 days ago · 182nd in this Competition
+
+Solid points. I have a question though. Did you train train a separate policy head for ships to send (like how much fraction of source planet) or determine it using heuristics (min ships to send to capture the target given current fleets state)?
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted 5 days ago · 5th in this Competition
+
+I have separate heads for each action components, fraction head included. RL policy is robust enough to learn the fraction to send.
+
+### Billy Bradley
+Posted 5 days ago · 2141st in this Competition
+
+Very noble of you to share all this advice. Don't you want to win? Or are you just that confident? 😂
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted 5 days ago · 5th in this Competition
+
+There are more experienced competitors who know a lot more than me. 😃
+
+### Billy Bradley
+Posted 4 days ago · 2141st in this Competition
+
+Too humble! You're number 1!
+
+### alekh
+Posted 6 days ago · 230th in this Competition
+
+Any insights on self-play? I see you do it from the start. I'm having issues with making self-play stable. Just turns the training degenerate over time…
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted 5 days ago · 5th in this Competition
+
+Yeah, self-play should work fine for this game. What reward structure do you use? how does it degenerate? entropy?
+
+### alekh
+Posted 4 days ago · 230th in this Competition
+
+i have a bit of shaped reward, score delta basically, and the terminal reward. nah, entropy stays fine, its more the winrate against the eval set that collapses… been struggling with it for 2 weeks now… could be something about the distribution shift when new self-play snapshots enters the opponent pool, idk.
+
+### hykunnnn
+Posted 6 days ago · 744th in this Competition
+
+May I ask, is it normal that the explained variance of the first few hundred updates is close to 0? I saw you say that 0.9 is considered good.
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted 6 days ago · 5th in this Competition
+
+It should go up to at least 0.8 in 100 iters. I checked my earliest run. It got to 0.9 in 20 iters. If explained variance never gets pass 0.5, you should check your obs representation or architecture. I would suspect obs representations. Start with simple features and simple model.
+
+### hykunnnn
+Posted 6 days ago · 744th in this Competition
+
+Thank you for your patient answers; this has been very helpful to me!
+
+### GUOHAOYANG
+Posted 7 days ago · 449th in this Competition
+
+Hi, have you also implemented your model in JAX?
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted 7 days ago · 5th in this Competition
+
+Yes, end to end JAX
+
+### GUOHAOYANG
+Posted 7 days ago · 449th in this Competition
+
+Thanks for your reply. I have one more question: is the reward structure you use just a win/lose (+1/-1) signal?
+
+### Son Pham
+Posted 8 days ago · 2787th in this Competition
+
+Thank you very much for sharing.
+
+Do you let the model propose action candidates? Or do you kind of have a set of candidate proposal based on heuristics? I had an agent that does second one but I have a feeling that I am limiting my own agent with the heuristics that I come up with.
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted 7 days ago · 5th in this Competition
+
+Action head is pretty much standard. Target head with target argmax during inference and softmax during training. Same thing for fleet percentage bins. I learned a lot from previous Lux AI RL winning solutions.
+
+### Son Pham
+Posted 2 days ago · 2787th in this Competition
+
+Thank you!
+
+When you encode your heuristical biases, do you encode it as percentage of the ships in the planet, or just use the raw value.
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted 2 days ago · 5th in this Competition
+
+Percentage of the ships. The percentage head can be either continuous or discrete. I have success with both training. For practical reasons, discrete bins are easier to train.
+
+### Son Pham
+Posted a day ago · 2787th in this Competition
+
+Ah thanks. I understand that you are referring to action heads. And it iss great to hear that you have success with both bin and just raw percentage.
+
+But what about our heuristics? I have one that is relating to the number of steps needed to reach a planet, or total number of ships needed to capture one. Do you have insights on whether which one is better for modeling?
+
+### Gerar Del Toro
+Posted 10 days ago · 149th in this Competition
+
+So 3 days of training at 10k SPS means that your competitive submission took around 2.6bn steps?
+
+I completely agree on the fact that fast environment is quite a must here. I rewrote it 3 times and now my experiments and iterations are faster and with more confidence. Before I had to guess whether it was a problem of architechture, features, action space, or just not enough exploration among many other posible things. Now it's the same haha, but at least my early conclusions are not based of just 5M steps or even less.
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted 7 days ago · 5th in this Competition
+
+It was 600M steps. 10k SPS calculation maybe wrong. There were evaluation steps eating up the wall time and stuffs.
+
+### MarvinTMB
+Posted 19 days ago · 2280th in this Competition
+
+I'm doing a transformer solution with PPO. You don't need warmup if you handle your gradients correctly: Agents like to stack tweaks and patches on top of each other until something works. Its really dumb and you need to stop it with CLAUDE/AGENTS.md instructions.
+
+There are many relatively easy things to improve on here such as actual reward shaping, ablation driven development workflow, commiting to a transformer backbone, and better value function solutions.
+
+### junlee789
+Posted 20 days ago
+
+Can I ask you the way how you have made orbit wars with JAX? I'm a newbie in RL, and While I was running every single episode in kaggle environments, I realized the time inefficiency.
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted 20 days ago · 5th in this Competition
+
+"Hey, Opus. Port this orbit wars into JAX. (make no mistakes 😂)". Have Opus write parity tests to compare frame by frame with kaggle environment. You also need to tell what obs features you want so that it'll be optimized altogether.
+
+### skalermo
+Posted 20 days ago · 17th in this Competition
+
+Thanks for sharing! If I read this right you are spending 50$ for gpu/day, that's a lot, are you using spot instances? Also, can you explain what's F12?
+
+### Boey
+Posted 20 days ago · 79th in this Competition
+
+Even with on-demand pricing, $50 for gpu/day for RTX 5090 is more than double the market price.
+
+### Lin Myat Ko — TOPIC AUTHOR
+Posted 20 days ago · 5th in this Competition
+
+Nope. It's not 50$ per day. 150 is total amount I've spent for running a lot of experiments. F12 is just the codename for experiments. It's 12th experiment which took 3 days and it's also the submitted model.
